@@ -1,4 +1,5 @@
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04
+FROM nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04
+#FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04
 
 # Prevent stop building ubuntu at time zone selection.  
 ENV DEBIAN_FRONTEND=noninteractive
@@ -6,7 +7,7 @@ ENV PATH /opt/conda/bin:$PATH
 
 # Prepare and empty machine for building
 RUN rm /etc/apt/sources.list.d/cuda.list
-RUN rm /etc/apt/sources.list.d/nvidia-ml.list
+#RUN rm /etc/apt/sources.list.d/nvidia-ml.list
 RUN apt-get update && apt-get install -y \
     git \
     cmake \
@@ -36,11 +37,11 @@ RUN apt-get -y install \
     libsuitesparse-dev
 RUN git clone https://github.com/ceres-solver/ceres-solver.git --branch 1.14.0
 RUN cd ceres-solver && \
-	mkdir build && \
-	cd build && \
-	cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF && \
-	make -j4 && \
-	make install
+    mkdir build && \
+    cd build && \
+    cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF && \
+    make -j4 && \
+    make install
 
 # Build and install COLMAP
 
@@ -52,12 +53,12 @@ RUN cd ceres-solver && \
 RUN git clone https://github.com/colmap/colmap.git #--branch 3.6
 
 RUN cd colmap && \
-	git checkout 96d4ba0b55c0d1f98c8c432420ecd6540868c398 && \
-	mkdir build && \
-	cd build && \
-	cmake .. && \
-	make -j4 && \
-	make install
+    git checkout 96d4ba0b55c0d1f98c8c432420ecd6540868c398 && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make -j4 && \
+    make install
 
 # Install MiniConda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py38_4.11.0-Linux-x86_64.sh -O ~/miniconda.sh && \
@@ -97,7 +98,8 @@ RUN cd /neuman/preprocess  && \
 RUN . /root/.bashrc && \
     conda create -n ROMP python==3.8.8 && \
     conda activate ROMP && \
-    conda install -c pytorch pytorch=1.9.1 torchvision=0.10.1 cudatoolkit=10.2 && \
+    #conda install -c pytorch pytorch=1.9.1 torchvision=0.10.1 cudatoolkit=10.2 && \
+    conda install -c pytorch pytorch=1.11.0 torchvision=0.12.0 cudatoolkit=11.3 && \
     conda install -c fvcore -c iopath -c conda-forge fvcore iopath && \
     conda install -c bottler nvidiacub && \
     conda install pytorch3d -c pytorch3d
@@ -119,8 +121,10 @@ RUN . /root/.bashrc && \
 RUN . /root/.bashrc && \
     conda create -n open-mmlab python=3.7 -y && \
     conda activate open-mmlab && \
-    conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.2 -c pytorch && \
-    pip install mmcv-full https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/mmcv_full-1.5.0-cp37-cp37m-manylinux1_x86_64.whl && \
+    #    conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.2 -c pytorch && \
+    conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch && \
+    #    pip install mmcv-full https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/mmcv_full-1.5.0-cp37-cp37m-manylinux1_x86_64.whl && \
+    pip install mmcv-full -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.11.0/mmcv_full-1.5.0-cp37-cp37m-manylinux1_x86_64.whl && \
     cd /neuman/preprocess/mmpose && \
     pip install -r requirements.txt && \
     pip install -v -e . && \
@@ -131,7 +135,8 @@ RUN . /root/.bashrc && \
 RUN . /root/.bashrc && \
     conda create -n neuman_env python=3.7 -y && \
     conda activate neuman_env && \
-    conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.2 -c pytorch && \
+    #    conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.2 -c pytorch && \
+    conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch && \
     conda install -c fvcore -c iopath -c conda-forge fvcore iopath && \
     conda install -c bottler nvidiacub && \
     conda install pytorch3d -c pytorch3d && \

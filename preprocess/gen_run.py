@@ -111,7 +111,7 @@ def main():
     if not os.path.exists(os.path.join(code_dir, 'BoostingMonocularDepth/pix2pix/checkpoints/mergemodel')):
         os.makedirs(os.path.join(code_dir, 'BoostingMonocularDepth/pix2pix/checkpoints/mergemodel'))
     if not os.path.isfile(os.path.join(code_dir, 'BoostingMonocularDepth/pix2pix/checkpoints/mergemodel/latest_net_G.pth')):
-        commands.append(f'wget https://sfu.ca/~yagiz/CVPR21/latest_net_G.pth -O {os.path.join(code_dir, "BoostingMonocularDepth/pix2pix/checkpoints/mergemodel/latest_net_G.pth")}')
+        commands.append(f'wget --no-check-certificate https://sfu.ca/~yagiz/CVPR21/latest_net_G.pth -O {os.path.join(code_dir, "BoostingMonocularDepth/pix2pix/checkpoints/mergemodel/latest_net_G.pth")}')
     if not os.path.isfile(os.path.join(code_dir, 'BoostingMonocularDepth/res101.pth')):
         commands.append(f'wget https://cloudstor.aarnet.edu.au/plus/s/lTIJF4vrvHCAI31/download -O res101.pth')
     if not os.path.isdir(os.path.join(video_dir, f'{video_name}/output/mono_depth')):
