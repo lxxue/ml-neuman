@@ -52,7 +52,7 @@ def main(opt):
     test_views = neuman_helper.read_text(test_split)
     val_views = neuman_helper.read_text(val_split)
     train_views = neuman_helper.read_text(train_split)
-    test_views = val_views + test_views
+    # test_views = val_views + test_views
     scene = neuman_helper.NeuManReader.read_scene(
         opt.scene_dir,
         tgt_size=opt.render_size,
@@ -70,39 +70,34 @@ def main(opt):
     weights = torch.load(opt.weights_path, map_location='cpu')
     utils.safe_load_weights(net, weights['hybrid_model_state_dict'])
 
-    preds = []
-    gts = []
-    all_world_pts = []
-    all_colors = []
-    for view_name in tqdm(test_views):
-        cap = scene[view_name]
-        i = cap.frame_id['frame_id']
-        rgb, depth_map, world_pts = render_utils.render_vanilla_depth(
-            coarse_net=net.coarse_bkg_net,
-            cap=cap,
-            fine_net=net.fine_bkg_net,
-            rays_per_batch=opt.rays_per_batch,
-            samples_per_ray=opt.samples_per_ray,
-            return_depth=True,
-        )
-        save_path = os.path.join('./demo', f'test_views/{os.path.basename(opt.scene_dir)}', f'rgb_{str(i).zfill(4)}.png')
-        if not os.path.isdir(os.path.dirname(save_path)):
-            os.makedirs(os.path.dirname(save_path))
-        imageio.imsave(save_path, (np.clip(rgb, 0, 1.0) * 255).astype(np.uint8))
-        np.save(os.path.join(os.path.dirname(save_path), f'depth_{i:04d}.npy'), depth_map)
-        depth_color = (colorize(depth_map, 0.0, 3.0, cmap='turbo') * 255).astype(np.uint8)
-        imageio.imsave(os.path.join(os.path.dirname(save_path), f'depth_color_{i:04d}.png'), depth_color)
+    for split_name, views in zip(["train", "val", "test"], [train_views, val_views, test_views]):
+        all_world_pts = []
+        all_colors = []
+        save_path_dir = os.path.join('./bg_renders', f'{os.path.basename(opt.scene_dir)}/{split_name}_views')
+        for view_name in tqdm(views):
+            cap = scene[view_name]
+            i = cap.frame_id['frame_id']
+            rgb, depth_map, world_pts = render_utils.render_vanilla_depth(
+                coarse_net=net.coarse_bkg_net,
+                cap=cap,
+                fine_net=net.fine_bkg_net,
+                rays_per_batch=opt.rays_per_batch,
+                samples_per_ray=opt.samples_per_ray,
+                return_depth=True,
+            )
+            if not os.path.isdir(save_path_dir):
+                os.makedirs(save_path_dir)
+            imageio.imsave(os.path.join(save_path_dir, f'rgb_{str(i).zfill(4)}.png'), (np.clip(rgb, 0, 1.0) * 255).astype(np.uint8))
+            np.save(os.path.join(save_path_dir, f'depth_{i:04d}.npy'), depth_map)
+            depth_color = (colorize(depth_map, 0.0, 3.0, cmap='turbo') * 255).astype(np.uint8)
+            imageio.imsave(os.path.join(save_path_dir, f'depth_color_{i:04d}.png'), depth_color)
 
-        save_points(os.path.join(os.path.dirname(save_path), f'world_pts_{i:04d}.ply'), world_pts, colors=rgb.reshape(-1, 3), BRG2RGB=False)
-        print(f'image saved: {save_path}')
-        preds.append(imageio.imread(save_path))
-        gts.append(cap.image)
-        all_world_pts.append(world_pts)
-        all_colors.append(rgb.reshape(-1, 3))
-    all_world_pts = np.concatenate(all_world_pts, axis=0)
-    all_colors = np.concatenate(all_colors, axis=0)
-    save_points(f"./demo/test_views/{os.path.basename(opt.scene_dir)}/all_world_pts.ply", all_world_pts, colors=all_colors, BRG2RGB=False)
-    # print(eval_metrics(gts, preds))
+            save_points(os.path.join(save_path_dir, f'world_pts_{i:04d}.ply'), world_pts, colors=rgb.reshape(-1, 3), BRG2RGB=False)
+            all_world_pts.append(world_pts)
+            all_colors.append(rgb.reshape(-1, 3))
+        all_world_pts = np.concatenate(all_world_pts, axis=0)
+        all_colors = np.concatenate(all_colors, axis=0)
+        save_points(f"./bg_renders/{os.path.basename(opt.scene_dir)}/{split_name}_views/all_world_pts.ply", all_world_pts, colors=all_colors, BRG2RGB=False)
 
 import open3d as o3d
 
