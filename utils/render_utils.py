@@ -7,18 +7,16 @@ import random
 import numpy as np
 import torch
 import torch.nn.functional as F
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import (
-    RasterizationSettings, MeshRenderer, MeshRasterizer,
-    HardPhongShader, PointLights, TexturesVertex,
-    PerspectiveCameras
-)
-from PIL import Image
-
 from cameras.camera_pose import CameraPose
+from geometry import transformations
+from PIL import Image
+from pytorch3d.renderer import (HardPhongShader, MeshRasterizer, MeshRenderer,
+                                PerspectiveCameras, PointLights,
+                                RasterizationSettings, TexturesVertex)
+from pytorch3d.structures import Meshes
+
 from utils import ray_utils
 from utils.constant import DEFAULT_GEO_THRESH
-from geometry import transformations
 
 trans_t = lambda t: np.array([
     [1, 0, 0, 0],
@@ -124,7 +122,7 @@ def render_vanilla(coarse_net, cap, fine_net=None, rays_per_batch=32768, samples
         total_rgb_map = []
         total_depth_map = []
         for i in range(0, total_rays, rays_per_batch):
-            print(f'{i} / {total_rays}')
+            # print(f'{i} / {total_rays}')
             ray_batch = build_batch(
                 origins[i:i + rays_per_batch],
                 dirs[i:i + rays_per_batch],
@@ -160,6 +158,65 @@ def render_vanilla(coarse_net, cap, fine_net=None, rays_per_batch=32768, samples
         return total_rgb_map, total_depth_map
     return total_rgb_map
 
+def render_vanilla_depth(coarse_net, cap, fine_net=None, rays_per_batch=32768, samples_per_ray=64, importance_samples_per_ray=128, white_bkg=True, near_far_source='bkg', return_depth=False, ablate_nerft=False):
+    device = next(coarse_net.parameters()).device
+
+    def build_batch(origins, dirs, near, far):
+        _bs = origins.shape[0]
+        ray_batch = {
+            'origin':    torch.from_numpy(origins).float().to(device),
+            'direction': torch.from_numpy(dirs).float().to(device),
+            'near':      torch.tensor([near] * _bs, dtype=torch.float32)[..., None].to(device),
+            'far':       torch.tensor([far] * _bs, dtype=torch.float32)[..., None].to(device)
+        }
+        return ray_batch
+
+    with torch.set_grad_enabled(False):
+        origins, dirs = ray_utils.shot_all_rays(cap)
+        total_rays = origins.shape[0]
+        total_rgb_map = []
+        total_depth_map = []
+        total_world_pts = []
+        for i in range(0, total_rays, rays_per_batch):
+            # print(f'{i} / {total_rays}')
+            ray_batch = build_batch(
+                origins[i:i + rays_per_batch],
+                dirs[i:i + rays_per_batch],
+                cap.near[near_far_source],
+                cap.far[near_far_source]
+            )
+            if ablate_nerft:
+                cur_time = cap.frame_id['frame_id'] / cap.frame_id['total_frames']
+                coarse_time = torch.ones(origins[i:i + rays_per_batch].shape[0], samples_per_ray, 1, device=device) * cur_time
+                fine_time = torch.ones(origins[i:i + rays_per_batch].shape[0], samples_per_ray + importance_samples_per_ray, 1, device=device) * cur_time
+            else:
+                coarse_time, fine_time = None, None
+            _pts, _dirs, _z_vals = ray_utils.ray_to_samples(ray_batch, samples_per_ray, device=device, append_t=coarse_time)
+            out = coarse_net(
+                _pts,
+                _dirs
+            )
+            rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(out, _z_vals, _dirs[:, 0, :], white_bkg=white_bkg)
+
+            if fine_net is not None:
+                _pts, _dirs, _z_vals = ray_utils.ray_to_importance_samples(ray_batch, _z_vals, weights, importance_samples_per_ray, device=device, append_t=fine_time)
+                out = fine_net(
+                    _pts,
+                    _dirs
+                )
+                rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(out, _z_vals, _dirs[:, 0, :], white_bkg=white_bkg)
+
+            rays_o, rays_d = ray_batch['origin'], ray_batch['direction']
+            world_pts = rays_o + rays_d * depth_map[..., None]
+            total_rgb_map.append(rgb_map)
+            total_depth_map.append(depth_map)
+            total_world_pts.append(world_pts)
+        total_rgb_map = torch.cat(total_rgb_map).reshape(*cap.shape, -1).detach().cpu().numpy()
+        total_depth_map = torch.cat(total_depth_map).reshape(*cap.shape).detach().cpu().numpy()
+        total_world_pts = torch.cat(total_world_pts).detach().cpu().numpy()
+    if return_depth:
+        return total_rgb_map, total_depth_map, total_world_pts
+    return total_rgb_map
 
 def render_smpl_nerf(net, cap, posed_verts, faces, Ts, rays_per_batch=32768, samples_per_ray=64, white_bkg=True, render_can=False, geo_threshold=DEFAULT_GEO_THRESH, return_depth=False, return_mask=False, interval_comp=1.0):
     device = next(net.parameters()).device
@@ -191,7 +248,7 @@ def render_smpl_nerf(net, cap, posed_verts, faces, Ts, rays_per_batch=32768, sam
         total_depth_map = []
         total_acc_map = []
         for i in range(0, total_rays, rays_per_batch):
-            print(f'{i} / {total_rays}')
+            # print(f'{i} / {total_rays}')
             rgb_map = torch.zeros_like(origins[i:i + rays_per_batch]).to(device)
             depth_map = torch.zeros_like(origins[i:i + rays_per_batch, 0]).to(device)
             acc_map = torch.zeros_like(origins[i:i + rays_per_batch, 0]).to(device)
@@ -274,7 +331,7 @@ def render_hybrid_nerf(net, cap, posed_verts, faces, Ts, rays_per_batch=32768, s
         total_depth_map = []
         total_acc_map = []
         for i in range(0, total_rays, rays_per_batch):
-            print(f'{i} / {total_rays}')
+            # print(f'{i} / {total_rays}')
             rgb_map = np.zeros_like(origins[i:i + rays_per_batch])
             depth_map = np.zeros_like(origins[i:i + rays_per_batch, 0])
             acc_map = np.zeros_like(origins[i:i + rays_per_batch, 0])
@@ -388,7 +445,7 @@ def render_hybrid_nerf_multi_persons(bkg_model, cap, human_models, posed_verts, 
         total_rgb_map = []
         total_depth_map = []
         for i in range(0, total_rays, rays_per_batch):
-            print(f'{i} / {total_rays}')
+            # print(f'{i} / {total_rays}')
             bkg_ray_batch = build_batch(
                 origins[i:i + rays_per_batch],
                 dirs[i:i + rays_per_batch],
