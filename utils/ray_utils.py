@@ -65,6 +65,11 @@ def warp_samples_to_canonical(pts, verts, faces, T):
 
     return can_pts, can_dirs, closest
 
+def warp_samples_gpu(pts, verts, T):
+    res = torch.cdist(pts, verts)
+    res = torch.argmin(res,dim=1)
+    T_inv = torch.inverse(T)
+    return T_inv[res] 
 
 def warp_samples_to_canonical_diff(pts, verts, faces, T):
     signed_dist, f_id, closest = igl.signed_distance(pts, verts.detach().cpu().numpy(), faces[:, :3])

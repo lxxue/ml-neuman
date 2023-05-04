@@ -263,12 +263,14 @@ class HumanNeRFTrainer():
         # warp points from observation space to canonical space
         mesh, raw_Ts = self.net.vertex_forward(int(batch['cap_id']))
         human_pts = human_pts.reshape(-1, 3)
-        Ts, _, _ = ray_utils.warp_samples_to_canonical_diff(
-            human_pts.detach().cpu().numpy(),
-            verts=mesh[0],
-            faces=self.val_dataset.scene.captures[batch['cap_id']].posed_mesh_cpu.faces_packed().numpy(),
-            T=raw_Ts[0]
-        )
+        # use gpu version according to https://github.com/apple/ml-neuman/issues/5#issuecomment-1323156200
+        Ts = ray_utils.warp_samples_gpu(pts=human_pts, verts=mesh[0], T=raw_Ts[0])
+        # Ts, _, _ = ray_utils.warp_samples_to_canonical_diff(
+        #     human_pts.detach().cpu().numpy(),
+        #     verts=mesh[0],
+        #     faces=self.val_dataset.scene.captures[batch['cap_id']].posed_mesh_cpu.faces_packed().numpy(),
+        #     T=raw_Ts[0]
+        # )
         can_pts = (Ts @ ray_utils.to_homogeneous(human_pts)[..., None])[:, :3, 0].reshape(human_b, human_n, 3)
         can_pts += offset
         can_dirs = can_pts[:, 1:] - can_pts[:, :-1]
