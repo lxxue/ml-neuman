@@ -12,7 +12,7 @@ python visualize_scene.py --scene_dir ./data/citron
 import argparse
 
 import imageio
-import open3d as o3d
+# import open3d as o3d
 import numpy as np
 import matplotlib
 
